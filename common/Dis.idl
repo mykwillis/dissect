@@ -1,0 +1,550 @@
+import "dissect.idl";
+import "oaidl.idl";
+import "ocidl.idl";
+
+typedef struct { DWORD hi; DWORD lo; } QWORD;	// quadword (64 bits)
+typedef struct { WORD wHi; DWORD dwLo; } TWORD;	// tripleword (48 bits)
+typedef struct __HOPCODE_CLASS { int dummy; } *HOPCODE_CLASS;	// type-safe handle
+
+cpp_quote("#define NAMELESS_UNION")
+
+typedef enum tagSIZE_ATTRIBUTE {
+	SIZE_8	= 8,	SIZE_BYTE = SIZE_8,		// BYTE
+	SIZE_16 = 16,	SIZE_WORD = SIZE_16,	// WORD
+	SIZE_32 = 32,	SIZE_DWORD = SIZE_32,	// DWORD
+	SIZE_48 = 48,	SIZE_DESC = SIZE_48, SIZE_TWORD = SIZE_48,	// GDT/LDT
+	SIZE_64 = 64,	SIZE_QWORD = SIZE_64,	// QWORD
+
+	SIZE_LAST	// invalid
+} SIZE_ATTRIBUTE;
+
+typedef enum tagOPERAND_CLASS {
+	OPERAND_CLASS_NONE,		// NULL operand
+	OPERAND_CLASS_REG,		// operand is a register
+	OPERAND_CLASS_REGPAIR,	// operand is a register pair (DX:AX, ... )
+	OPERAND_CLASS_MEM,		// operand is a memory location
+	OPERAND_CLASS_PORT,		// io port
+
+	//
+	// all immediate operands are sign extended when combined with
+	// larger values.  this should only happen with imm8 operands.
+	//
+	OPERAND_CLASS_IMM,		// immediate operand
+	OPERAND_CLASS_DIRECT,	// direct pointer
+
+	OPERAND_CLASS_MAX		// invalid
+} OPERAND_CLASS;
+
+//
+// Register Specification
+//
+//	The Intel architecture has several register sets that are exposed
+//	to the programmer, each register set generally having its own
+//	capabilities and usage idioms.
+// 
+// General Registers
+//	The general registers are the familiar registers with names EAX,
+//	EBX, ECX, etc.  They can be accessed as bytes (AL), words (AX),
+//	or in their native double word format (EAX).
+//	There are 8 general purpose registers
+//
+// MMX Registers
+//	The multimedia extension (MMX) register set consists of 8 quad-word
+//	(64 bit) registers used in specialized MMX instructions.
+//
+// Control Registers
+// Test Registers
+// Segment Registers
+//
+// Register Representations in Dissect
+//	
+//	Dissect classifies each register uniquely in the structure REG.  This
+//	structure contains both a REG_TYPE field, which identifies the register
+//	set in which the register is contained, and a REG_IDX field, which 
+//	identifies the register uniquely within that register set.
+//	Note that multiple registers can (and do) share the same REG_IDX value
+
+//
+// The REG_TYPE enum identifies the register set part of a register's
+// identification.  This structure is of course machine-dependant.
+// Once a register type is added to this enum, it may not be removed
+// nor moved in order to permit backward compatibility.
+// Components accepting a REGTYPE structure (through an INSTRUCTION
+// structure, for example) should assume that a REG_TYPE value
+// greater than REGTYPE_MAX represents a register from a future
+// processor, and should handle the situation gracefully.
+//
+typedef enum tagREG_TYPE	{
+	REGTYPE_NONE,		// no register
+	REGTYPE_GEN_BYTE,	// general byte register (AL, CL, ...)
+	REGTYPE_GEN_WORD,	// general word register (AX, CX, ...)
+	REGTYPE_GEN_DWORD,	// general dword register (EAX, ECX, ...)
+	REGTYPE_GEN_QWORD,	// general qword register (XAX, XCX, ...)
+	REGTYPE_MMX,		// MMX registers (MM0, MM1, ...)
+	REGTYPE_CONTROL,	// processor control register (CR0, CR1, ...)
+	REGTYPE_TEST,		// ?
+	REGTYPE_DEBUG,		// ?
+	REGTYPE_SEG,		// segment register (CS, DS, ...)
+	REGTYPE_FLAGS,		// flags register (EFLAGS)
+	REGTYPE_SYSTEM,		// system register (IDTR, GDTR, ...)
+	REGTYPE_MAX			// invalid
+} REGTYPE;
+typedef REGTYPE REG_TYPE;
+
+//
+// The REG_NUM enum identifies a specific register from within a register
+// set.  Note that many registers from different register sets share the
+// same REG_NUM value.  This enum is provided as a convenience, and as
+// such does not explicitly list all registers.
+//
+typedef enum tagREG_NUM	{
+	REG_NUM_AX = 0, REG_NUM_AL = 0, REG_NUM_ES = 0,
+	REG_NUM_CX = 1, REG_NUM_CL = 1, REG_NUM_CS = 1,
+	REG_NUM_DX = 2, REG_NUM_DL = 2, REG_NUM_SS = 2,
+	REG_NUM_BX = 3, REG_NUM_BL = 3, REG_NUM_DS = 3,
+	REG_NUM_SP = 4, REG_NUM_AH = 4, REG_NUM_FS = 4,
+	REG_NUM_BP = 5, REG_NUM_CH = 5, REG_NUM_GS = 5,
+	REG_NUM_SI = 6, REG_NUM_DH = 6,
+	REG_NUM_DI = 7, REG_NUM_BH = 7,
+	REG_MAX	// invalid
+} REG_NUM;
+
+//
+// A machine register is uniquely identified by the REG structure.
+//
+typedef struct tagREG {
+	REG_TYPE	type;	// REG_TYPE_xxx value
+	REG_NUM		num;	// REG_NUM_xxx value
+} REG;
+
+typedef BYTE	FLAG;	// 256 possible flags
+
+//
+// A memory location is specified with the MEMPTR structure.
+// This structure contains all of the components that may be
+// necessary to specifiy a memory address on the target machine.
+// The rules for interpreting this structure are as follows:
+//	1)	REG values should always have their type field set to REGTYPE_NONE if they
+//		are not used in the address calculation;
+//	2)	The scale field always contains a non-zero value that is to be
+//		multiplied against the idx register's value.  If a particular
+//		addressing method does not use the scale factor, this field
+//		should be set to 1;
+//
+// Note that the SIZE_ATTRIBUTE given by the size field gives the size of the
+// final effective address that is calculated using the constituent parts, 
+// NOT the size of the operand at the calculated address.
+//
+// To calculate the effective address given by a MEMPTR structure, just add
+// the values of all components that have their use mask turned on in the
+// mask field, and truncate the resulting value to the size given in 'size'.
+// (the seg field should not be added in this manner)
+// Note that displacement values are signed, and should thus be sign extended
+// before added to a larger quantity.
+//
+typedef enum tagMEMPTR_USE_FLAGS {
+	MEMPTR_USE_SEG	=	0x1,	// segment register used in address calculation
+	MEMPTR_USE_BASE	=	0x2,	// base register used in address calculation
+	MEMPTR_USE_IDX	=	0x4,	// index register used in address calculation
+	MEMPTR_USE_SCALE=	0x8,	// scale factor applied to index used in address calculation
+	MEMPTR_USE_DISP =	0x10,	// temporary!
+	MEMPTR_USE_DISP8=	0x10,	// 8-bit displacement used in address calculation
+	MEMPTR_USE_DISP16=	0x20,	// 16-bit displacement used in address calculation
+	MEMPTR_USE_DISP32=	0x40,	// 32-bit displacement used in address calculation
+	MEMPTR_USE_DISP64=	0x80,	// 64-bit displacement used in address calculation
+	MEMPTR_USE_RES1=	0x100	// reserved.  do not set or rely on this flag's value
+} MEMPTR_USE_FLAGS;
+
+typedef struct tagMEMPTR {
+	SIZE_ATTRIBUTE	address_size;	// size of the final effective address (pointer)
+	SIZE_ATTRIBUTE  operand_size;
+
+	REG		seg;	// segment register
+	REG		base;	// base register
+	REG		idx;	// index register
+	int		scale;	// scale factor applied to index register
+	[ switch_type(SIZE_ATTRIBUTE), switch_is(address_size) ]
+	union {
+		[case (SIZE_8)]
+		BYTE	disp8;
+		[case (SIZE_16)]
+		WORD	disp16;
+		[case (SIZE_32)]
+		DWORD	disp32;
+		[case (SIZE_64)]
+		QWORD	disp64;
+	} NAMELESS_UNION;
+	REG		res1;	// reserved, do not depend on this value
+	/* MEMPTR_USE_FLAGS */ DWORD	mask;	// use mask; see MEMPTR_USE flags 
+} MEMPTR;
+
+
+
+typedef struct tagIOPORT {
+	WORD	port;
+} IOPORT;
+
+typedef struct tagIMM {
+	SIZE_ATTRIBUTE size;
+	[switch_is(size)]
+	union {
+		[case(SIZE_8)]
+		BYTE	imm8;
+		[case(SIZE_16)]
+		WORD	imm16;
+		[case(SIZE_32)]
+		DWORD	imm32;
+		[case(SIZE_64)]
+		QWORD	imm64;
+		[default]
+		;
+	} NAMELESS_UNION;
+} IMM;
+
+typedef struct tagDIRECT {
+	SIZE_ATTRIBUTE size;
+	[switch_is(size)]
+	union {
+		[case(SIZE_16)]
+		WORD	direct16;
+		[case(SIZE_32)]
+		DWORD	direct32;
+		[case(SIZE_48)]
+		TWORD	direct48;
+		[case(SIZE_64)]
+		QWORD	direct64;
+		[default]
+		;
+	} NAMELESS_UNION;
+} DIRECT;
+
+//
+// An operand can represent a memory address, a register, or an
+// immediate value.
+//
+// The OPERAND_CLASS given in 'cls' determines how the actual operand is
+// located, by specifying the appropriate union member field.  The size
+// of the operand is given by the OPERAND_SIZE value in 'size'.
+//
+typedef struct tagOPERAND {
+	OPERAND_CLASS	cls;	// OPERAND_CLASS_x constant
+	DWORD			flags;	// see OPERAND_FLAG_xxx flags
+	[ switch_type(OPERAND_CLASS), switch_is(cls) ]
+	union {
+		[case(OPERAND_CLASS_MEM)]
+		MEMPTR	mem;	// when used, this field generates the memory address at which
+						// the operand is located.
+
+		[case(OPERAND_CLASS_REG)]
+		REG		reg;	// when used, this field specifies the register to use as an
+						// operand.  (Note that if a register is used to get a pointer
+						// to the operand, as in [EAX], the 'mem' field should be used
+						// instead.)
+		
+		[case(OPERAND_CLASS_REGPAIR)]
+		REG		regpair[2];	// when used, this field specifies the register pair to use
+							// as the operand.  Generally used to hold 64-bit destinations
+							// in MUL or IMUL.
+		[case(OPERAND_CLASS_PORT)]
+		IOPORT	port;
+		
+		[case(OPERAND_CLASS_IMM)]
+		IMM		imm;
+
+		[case(OPERAND_CLASS_DIRECT)]
+		DIRECT		direct;		// for DIRECT addressing modes; just a pure pointer
+								// typically consisting of segment and offset values.
+								// (this isn't MEMPTR, because that method only allows
+								// segments to be specified in a register)
+
+		[default]
+		;
+	} NAMELESS_UNION;
+} OPERAND;
+#define OPERAND_FLAG_IMPLIED	0x1	// operand is implied by the opcode
+#define OPERAND_FLAG_DEST		0x2	// operand is changed by the instruction (destination)
+
+//
+// This structure represents one single instruction, with
+// up to three operands.
+// The OPCODE_CLASS parameter can be converted to an index
+// into the consumer's OpcodeClass array.
+//
+typedef struct tagINSTRUCTION {
+	HOPCODE_CLASS	hoc;	// handle to opcode class
+	char			AnsiName[16];
+	DWORD			dwLen;	// length of instruction in bytes
+	DWORD			dwVirtualAddress;
+	BYTE			bytes[32];
+	int				cOperands;
+	OPERAND			op[3];
+} INSTRUCTION;
+
+typedef INSTRUCTION *PINSTRUCTION;
+
+[ uuid(AFC3E230-B956-11d1-AE8B-0000C0866B0E) ]
+interface IDisDis : IUnknown
+{
+	HRESULT Disasm([in] DWORD dwPtr, [in] DWORD dwVA, [out] PINSTRUCTION pInst);
+}
+
+	
+//{54CF88F0-5E30-11d1-AE36-0000C0866B0E}
+[ uuid(54CF88F0-5E30-11d1-AE36-0000C0866B0E) ]
+interface IDisInstruction : IUnknown
+{
+	HRESULT GetINSTRUCTION	( [out] INSTRUCTION *pInst );
+	HRESULT GetAnsiClassName( [in] char *pName, [in] ULONG ulLen );
+}
+
+//{AF413E90-F303-11d1-AEC8-0000C0866B0E}
+[uuid(AF413E90-F303-11d1-AEC8-0000C0866B0E)]
+interface IEnumInstructions : IUnknown
+{
+	HRESULT Next(ULONG celt, INSTRUCTION* rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IEnumInstructions** ppEnum);
+}
+
+typedef enum tagCTRL_FLOW_TYPE
+{
+	CTRL_UJMP,
+	CTRL_CJMP,
+	CTRL_IJMP,
+	CTRL_CALL,
+	CTRL_FALL,	// normal case
+	CTRL_RET
+} CTRL_FLOW_TYPE;
+
+typedef struct tagCTRL_FLOW
+{
+	CTRL_FLOW_TYPE	Type;
+	[switch_is(Type)]
+	union {
+		[case(CTRL_UJMP)]
+		struct {
+			DWORD Target;
+		} ujmp;
+		[case(CTRL_CJMP)]
+		struct {
+			DWORD	TrueTarget;
+			DWORD	FalseTarget;
+			FLAG	ConditionFlag;
+		} cjmp;
+		[case(CTRL_IJMP)]
+		struct {
+			DWORD dwReserved;
+		} ijmp;
+		[case(CTRL_CALL)]
+		struct {
+			DWORD CallTarget;
+			DWORD FallTarget;
+		} call;
+		[case(CTRL_FALL)]
+		struct {
+			DWORD FallTarget;
+		} fall;
+		[case(CTRL_RET)]
+		struct {
+			DWORD dwReserved;
+		} ret;
+		[default]
+		;
+	} NAMELESS_UNION;
+} CTRL_FLOW;
+
+typedef enum tagOPERATION {
+	// unary operation
+	// x = OP y
+	OP_BEGIN_UNARY,
+	OP_SHL,
+	OP_SHR,
+	OP_END_UNARY,
+
+	// binary operation
+	// x = y OP z
+	OP_BEGIN_BINARY,
+	OP_ADD,
+	OP_SUB,
+	OP_MUL,
+	OP_DIV,
+	OP_MOD,
+	OP_END_BINARY,
+	
+	// copy
+	// x = y
+	OP_COPY,
+	
+} OPERATION;
+
+typedef struct tagUNARY_EXPRESSION	{
+	struct tagEXPRESSION *Operand;
+	OPERATION	Operation;
+} UNARY_EXPRESSION;
+
+typedef struct tagBINARY_EXPRESSION	{
+	struct tagEXPRESSION *Operand1;
+	struct tagEXPRESSION *Operand2;
+	OPERATION	Operation;
+} BINARY_EXPRESSION;
+
+typedef enum tagEXPR_TYPE	{
+	EXPR_NULL,
+	EXPR_OPERAND,
+	EXPR_UNARY,
+	EXPR_BINARY
+} EXPR_TYPE;
+
+typedef struct tagEXPRESSION	{
+	EXPR_TYPE	Type;
+	[switch_is(Type)]
+	union {
+		[case(EXPR_OPERAND)]
+		OPERAND	Operand;
+		[case(EXPR_UNARY)]
+		UNARY_EXPRESSION	UnaryExpression;
+		[case(EXPR_BINARY)]
+		BINARY_EXPRESSION	BinaryExpression;
+		[default]
+			;
+	} NAMELESS_UNION;
+} EXPRESSION;
+
+typedef struct tagASSIGNMENT	{
+	OPERAND	Target;
+	struct tagEXPRESSION *Source;
+} ASSIGNMENT;
+
+typedef enum tagSTATEMENT_TYPE	{
+	STATEMENT_TYPE_ASSIGNMENT,
+	STATEMENT_TYPE_CTRL,
+	STATEMENT_TYPE_COMPOUND
+} STATEMENT_TYPE;
+
+typedef enum tagCOMPOUND_STATEMENT_TYPE	{
+	COMPOUND_STATEMENT_TYPE_WHILE,
+	COMPOUND_STATEMENT_TYPE_IF
+} COMPOUND_STATEMENT_TYPE;
+
+typedef struct tagSTATEMENT_LIST {
+	DWORD	NumberOfStatements;
+	[size_is(NumberOfStatements)]
+	struct tagSTATEMENT *Statements;
+} STATEMENT_LIST;
+
+typedef struct tagCOMPOUND_STATEMENT_WHILE	{
+	struct tagEXPRESSION *Expr;
+	STATEMENT_LIST StatementList;
+} COMPOUND_STATEMENT_WHILE;
+
+typedef struct tagCOMPOUND_STATEMENT_IF	{
+	struct tagEXPRESSION *Expr;
+	STATEMENT_LIST StatementList;
+} COMPOUND_STATEMENT_IF;
+
+typedef struct tagCOMPOUND_STATEMENT {
+	COMPOUND_STATEMENT_TYPE	Type;
+	[switch_is(Type)]
+		union {
+		[case(COMPOUND_STATEMENT_TYPE_WHILE)]
+		COMPOUND_STATEMENT_WHILE While;
+		[case(COMPOUND_STATEMENT_TYPE_IF)]
+		COMPOUND_STATEMENT_IF	If;
+		[default]
+			;
+	} NAMELESS_UNION;
+
+} COMPOUND_STATEMENT;
+
+typedef struct tagSTATEMENT {
+	STATEMENT_TYPE	Type;
+	[switch_is(Type)]
+	union {
+		[case(STATEMENT_TYPE_ASSIGNMENT)]
+		ASSIGNMENT	Assignment;
+		[case(STATEMENT_TYPE_CTRL)]
+		CTRL_FLOW	Flow;
+		[case(STATEMENT_TYPE_COMPOUND)]
+		COMPOUND_STATEMENT	Compound;
+		[default]
+			;
+	} NAMELESS_UNION;
+} STATEMENT;
+
+typedef struct tagSIMPLE_ASSIGNMENT	{
+	OPERATION	Operation;
+	OPERAND		Destination;
+	OPERAND		Source[2];	// depending on Operation, only 0 or 1 of these may be used	
+} SIMPLE_ASSIGNMENT;
+
+typedef struct tagQUAD	{
+	STATEMENT_TYPE	Type;
+	[switch_is(Type)]
+	union {
+		[case(STATEMENT_TYPE_ASSIGNMENT)]
+		SIMPLE_ASSIGNMENT	Assignment;
+		[case(STATEMENT_TYPE_CTRL)]
+		CTRL_FLOW	Flow;
+		[default]
+			;
+	} NAMELESS_UNION;
+} QUAD;
+
+
+
+//
+// Up to 255 register banks can be defined by the front end, with up
+// to 255 registers in each register bank.  Each register can have a size
+// of between 1 and 8 bytes.  The size of all registers in a given register
+// bank must be identical.  Individual bytes of a multi-byte register
+// can be specified by a bitmask specifying the bytes referenced, though
+// the specified bytes must be adjacent.
+//
+// It is assumed that every machine will have a register which points
+// to the current top of stack which is automatically adjusted during
+// PUSH and POP operations.  Whether the pointer is adjusted before
+// or after the transfer of operand to or from the stack is not important.
+//
+//
+// BUGBUG: The REGISTER definition below is similar to REG, but more geared
+// toward platform independance.
+//
+
+
+typedef struct tagREGISTER_BANK_SPEC
+{
+	BYTE	RegisterSize;	// in bytes
+	BYTE	NumberOfRegisters;
+	[size_is(NumberOfRegisters)]
+	OLECHAR *RegisterNames[];
+} REGISTER_BANK_SPEC;
+
+typedef struct tagREGISTER
+{
+	BYTE	Bank;
+	BYTE	Index;
+} REGISTER;
+
+typedef struct tagREGDEF
+{
+	REGISTER	Register;
+	BYTE		Mask;
+} REGDEF;
+typedef struct tagREGDEF REGUSE;
+
+typedef struct tagMACHINE_SPEC
+{
+	BYTE	NumberOfRegisterBanks;
+	[size_is(NumberOfRegisterBanks)]
+	REGISTER_BANK_SPEC	*RegisterBanks;
+
+	REGISTER	StackPointer;
+
+	BYTE	NumberOfFlags;
+	[size_is(NumberOfFlags)]
+	OLECHAR **FlagNames;
+} MACHINE_SPEC;
+
+
+

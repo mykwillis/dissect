@@ -1,0 +1,38 @@
+// atltest.idl : IDL source for atltest.dll
+//
+
+// This file will be processed by the MIDL tool to
+// produce the type library (atltest.tlb) and marshalling code.
+import "oaidl.idl";
+import "ocidl.idl";
+
+
+	[
+		object,
+		uuid(9859BB82-CAB2-11D1-AE9A-B2D326000000),
+		dual,
+		helpstring("IClassName Interface"),
+		pointer_default(unique)
+	]
+	interface IClassName : IDispatch
+	{
+	};
+[
+	uuid(9859BB80-CAB2-11D1-AE9A-B2D326000000),
+	version(1.0),
+	helpstring("atltest 1.0 Type Library")
+]
+library ATLTESTLib
+{
+	importlib("stdole32.tlb");
+	importlib("stdole2.tlb");
+
+	[
+		uuid(9859BB83-CAB2-11D1-AE9A-B2D326000000),
+		helpstring("ClassName Class")
+	]
+	coclass ClassName
+	{
+		[default] interface IClassName;
+	};
+};

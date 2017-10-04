@@ -1,0 +1,304 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+import "ldr.idl";
+import "sys.idl"; //CONFIDENCE, etc.
+
+
+interface IDisSymMgr;	// symbol manager
+interface IDisSmX;		// symbol extractor
+interface IDisFunction;
+
+
+interface ISymbol;
+interface IModule;
+interface IEnumTypes;
+
+interface IEnumSymbols;
+interface IEnumModules;
+interface IEnumTypes;
+
+cpp_quote("#define STANDARD_HTYPE( vt )  ((HTYPE)( (DWORD)vt | 0x80000000 ))")
+cpp_quote("#define NAMELESS_UNION  ")
+
+typedef struct ___tagHTYPE
+{
+	DWORD dummy;
+} ___HTYPE;
+typedef ___HTYPE *HTYPE;
+
+typedef enum tagSYMKIND
+{
+	SKIND_FUNC,
+	SKIND_GLOBAL,
+	SKIND_LOCAL,
+	SKIND_UNKNOWN
+} SYMKIND;
+
+//[uuid(800B53C0-D354-11d1-AEA2-7C650A000000)]
+//interface IDisEnumHSYMBOL : IUnknown
+//{
+//	HRESULT Next(ULONG celt, HSYMBOL* rgelt, ULONG* pceltFetched);
+//	HRESULT Skip(ULONG celt);
+//	HRESULT Reset(void);
+//	HRESULT Clone(IDisEnumHSYMBOL** ppEnum);
+//}
+
+typedef struct tagRECORD_INFO	{
+	int		NumberOfMembers;
+	[size_is(NumberOfMembers)]
+	HTYPE *Types;
+	[size_is(NumberOfMembers)]
+	BSTR *Names;
+} RECORD_INFO;
+
+typedef struct tagENUM_INFO	{
+	int		NumberOfMembers;
+	[size_is(NumberOfMembers)]
+	DWORD *Values;
+	[size_is(NumberOfMembers)]
+	BSTR *Names;
+} ENUM_INFO;
+
+typedef struct tagUNION_INFO	{
+	int		NumberOfMembers;
+	[size_is(NumberOfMembers)]
+	HTYPE *Types;
+	[size_is(NumberOfMembers)]
+	BSTR *Names;
+} UNION_INFO;
+
+typedef struct tagALIAS_INFO	{
+	HTYPE	Type;
+} ALIAS_INFO;
+
+typedef struct tagTYPE_INFO {
+	BSTR	Name;
+	BSTR	DocString;
+	DWORD	Size;
+	TYPEKIND	TypeKind;
+
+	[switch_is(TypeKind)]
+	union {
+		[case(TKIND_UNION)]
+		UNION_INFO	Union;
+
+		[case(TKIND_RECORD)]
+		RECORD_INFO Record;
+
+		[case(TKIND_ENUM)]
+		ENUM_INFO	Enum;
+
+		[case(TKIND_ALIAS)]
+		ALIAS_INFO	Alias;
+	} NAMELESS_UNION;
+} TYPE_INFO;
+
+typedef struct tagFUNCTION_INFO {
+	FUNCKIND	FuncKind;
+	INVOKEKIND	InvKind;
+	CALLCONV	CallConv;
+	HTYPE		ReturnType;
+	int			NumberOfParams;
+	[size_is(NumberOfParams)]
+	HTYPE *		Types;
+	[size_is(NumberOfParams)]
+	BSTR *		Names;
+} FUNCTION_INFO;
+
+typedef struct tagGLOBAL_INFO {
+	HTYPE	Type;
+} GLOBAL_INFO;
+
+typedef struct tagLOCAL_INFO	{
+	int	Dummy;
+} LOCAL_INFO;
+
+typedef struct tagSYMBOL_INFO {
+	BSTR		Name;
+	BSTR		DocString;
+	DWORD		Address;
+	DWORD		Size;
+	SYMKIND		SymKind;
+
+	[switch_is(SymKind)]
+	union {
+		[case(SKIND_FUNC)]
+		FUNCTION_INFO	Function;
+		[case(SKIND_GLOBAL)]
+		GLOBAL_INFO		Global;
+		[case(SKIND_LOCAL)]
+		LOCAL_INFO		Local;
+		[default]
+			;
+	} NAMELESS_UNION;
+
+} SYMBOL_INFO;
+
+typedef struct tagMODULE_INFO	{
+	BSTR	Name;
+	BSTR	DocString;
+	DWORD	BaseAddress;
+	DWORD	Size;
+} MODULE_INFO;
+
+
+[uuid(AFAEAFC0-E089-11d1-AEB5-BEBB53000000)]
+interface IType : IUnknown	{
+	HRESULT SetName(		[in]	BSTR Name);
+	HRESULT SetDocString(	[in]	BSTR DocString);
+	HRESULT SetMemberName(	[in]	int Position,
+							[in]	BSTR Name);
+	HRESULT	SetMemberType(	[in]	int Position,
+							[in]	HTYPE Type);
+	HRESULT	SetMemberValue(	[in]	int Position,
+							[in]	DWORD Value);
+
+	HRESULT GetTypeInfo(	[out]	TYPE_INFO **TypeInfo);
+	HRESULT ReleaseTypeInfo([in]	TYPE_INFO *TypeInfo);
+}
+
+[uuid(D8FCD7C0-E088-11d1-AEB5-BEBB53000000)]
+interface ISymbol : IUnknown	{
+	HRESULT	GetSymbolInfo(		[out]	SYMBOL_INFO **SymbolInfo);
+	HRESULT ReleaseSymbolInfo(	[in]	SYMBOL_INFO *SymbolInfo);
+}
+
+[uuid(A1A6D0F0-DE0D-11d1-AEB3-0000C0866B0E)]
+interface IModule : IUnknown {
+	HRESULT	GetModuleInfo(		[out]	MODULE_INFO **ModuleInfo);
+	HRESULT	ReleaseModuleInfo(	[in]	MODULE_INFO *ModuleInfo);
+
+	HRESULT	AddSymbol(			[out]	ISymbol **ppISymbol,
+								[in]	SYMBOL_INFO *SymbolInfo);
+	HRESULT	GetSymbolByName(	[out]	ISymbol **ppIUnknown,
+								[in]	BSTR Name);
+	HRESULT GetSymbolByAddress( [out]	ISymbol **ppIUnknown,
+								[in]	DWORD Address);
+	HRESULT EnumSymbols(		[out]	IEnumSymbols **ppEnum);
+
+}
+
+//{9C3EC8C0-E2A1-11d1-AEB8-0000C0866B0E}
+[uuid(9C3EC8C0-E2A1-11d1-AEB8-0000C0866B0E)]
+interface IEnumTypes : IUnknown
+{
+	HRESULT Next(ULONG celt, IType **rgelt, ULONG *pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IEnumTypes **ppenum);
+}
+
+//{AD8750F0-BBAC-11d1-AE8F-B8BB59000000}
+[uuid(AD8750F0-BBAC-11d1-AE8F-B8BB59000000)]
+interface IEnumSymbols : IUnknown
+{
+	HRESULT Next(ULONG celt, ISymbol **rgelt, ULONG *pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IEnumSymbols **ppenum);
+}
+
+//{9C3EC8C1-E2A1-11d1-AEB8-0000C0866B0E}
+[uuid(9C3EC8C1-E2A1-11d1-AEB8-0000C0866B0E)]
+interface IEnumModules : IUnknown
+{
+	HRESULT Next(ULONG celt, IModule **rgelt, ULONG *pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IEnumModules **ppenum);
+}
+
+//{215643D0-BBA7-11d1-AE8F-B8BB59000000}
+[uuid(215643D0-BBA7-11d1-AE8F-B8BB59000000)]
+interface IDisSymMgr : IUnknown
+{
+	//
+	// Creation Methods
+	//
+	HRESULT	CreateNew(	[in] OLECHAR *Path );
+	HRESULT OpenExisting([in] OLECHAR *Path );
+	
+	//
+	// Extract the symbols from a given image
+	//
+	HRESULT Extract(	[in] IDisImg *Image );
+
+	//
+	// Type Methods
+	//
+	HRESULT AddType(		[out]	IType **ppType, 
+							[in]	TYPE_INFO *TypeInfo);
+	HRESULT GetTypeByName(	[out]	IType **ppType,
+							[in]	BSTR	Name);
+	HRESULT	GetTypeByHandle([out]	IType **pIType,
+							[in]	HTYPE	Type);
+
+	HRESULT	GetTypeHandle(	[out]	HTYPE *Handle,
+							[in]	IType *pIType);
+	HRESULT	CloseTypeHandle([in]	HTYPE	Handle);
+
+	HRESULT EnumTypes(		[out]	IEnumTypes **ppEnum);
+
+	//
+	// Symbol Methods
+	//
+	HRESULT	AddSymbol(			[out]	ISymbol **ppISymbol,
+								[in]	SYMBOL_INFO *SymbolInfo);
+	HRESULT	GetSymbolByName(	[out]	ISymbol **ppIUnknown,
+								[in]	BSTR Name);
+	HRESULT GetSymbolByAddress( [out]	ISymbol **ppIUnknown,
+								[in]	DWORD Address);
+	HRESULT EnumSymbols(		[out]	IEnumSymbols **ppEnum);
+
+	//
+	// Module Methods
+	//
+	HRESULT	AddModule(			[out]	IModule **ppIModule,
+								[in]	MODULE_INFO *ModuleInfo);
+	HRESULT	GetModuleByName(	[out]	IModule **ppIModule,
+								[in]	BSTR Name);
+	HRESULT	GetModuleByAddress(	[out]	IModule **ppIModule,
+								[in]	DWORD Address);
+	HRESULT EnumModules(		[out]	IEnumModules **ppEnum);
+}
+
+
+//{0F715AB0-BBA9-11d1-AE8F-B8BB59000000}
+[uuid(0F715AB0-BBA9-11d1-AE8F-B8BB59000000)]
+interface IDisSmX : IUnknown
+{
+	HRESULT Extract(IDisImg *Image, IDisSymMgr *SymbolManager);
+}
+
+typedef enum tagFUNCDESC_FIELDS {
+	FUNCDESC_FIELD_MEMID				=	0x1,
+	FUNCDESC_FIELD_LPRGSCODE			=	0x2,
+	FUNCDESC_FIELD_LPRGELEMDESCPARAM	=	0x4,
+	FUNCDESC_FIELD_FUNCKIND				=	0x8,
+	FUNCDESC_FIELD_INVKIND				=	0x10,
+	FUNCDESC_FIELD_CALLCONV				=	0x20,
+	FUNCDESC_FIELD_PARAMS				=	0x40,
+	FUNCDESC_FIELD_PARAMSOPT			=	0x80,
+	FUNCDESC_FIELD_OVFT					=	0x100,
+	FUNCDESC_FIELD_SCODES				=	0x200,
+	FUNCDESC_FIELD_ELEMDESCFUNC			=	0x400,
+	FUNCDESC_FIELD_FUNCFLAGS			=	0x800
+} FUNCDESC_FIELDS;
+
+//{28C36830-BBC0-11d1-AE8F-B8BB59000000}
+[uuid(28C36830-BBC0-11d1-AE8F-B8BB59000000)]
+interface IDisFunction : IUnknown
+{
+	// if pdwAddr returns (NULL), the address is unknown
+	// if dwLen returns (-1), the length is unknown
+	HRESULT GetBasicInfo([out]BSTR *pbsName, [out]DWORD * pdwAddr, [out] DWORD * pdwLen);
+	
+	HRESULT GetFUNCDESC([out]FUNCDESC *pFd, [out] FUNCDESC_FIELDS *pValidFields );
+	HRESULT ReleaseFUNCDESC([in] FUNCDESC *pFd);
+	
+	HRESULT GetConfidence([in] FUNCDESC_FIELDS SingleField, [out] CONFIDENCE *pConfidence );
+	HRESULT SetConfidence([in] FUNCDESC_FIELDS FieldList, [in] CONFIDENCE NewConfidence);
+	
+}
+

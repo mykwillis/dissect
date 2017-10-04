@@ -1,0 +1,7 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+typedef struct tagFOO
+{
+	int dummy;
+} FOO;

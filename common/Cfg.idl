@@ -1,0 +1,91 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+import "dis.idl";
+import "ldr.idl";
+import "sym.idl";
+
+//interface IDisDis;		// symbol extractor
+//interface IDisLdr;
+
+typedef enum tagREFTYPE
+{
+	REFTYPE_UJMP = 1,	// unconditional jump
+	REFTYPE_CJMP,		// conditional jump
+	REFTYPE_CALL		// call
+} REFTYPE;
+
+typedef struct tagDIS_REF
+{
+	DWORD	Address;	// virtual address of referencing code instruction
+	CTRL_FLOW_TYPE Type;
+} DIS_REF;
+
+
+typedef enum tagBB_FLAGS
+{
+	BB_PARSE_INCOMPLETE
+} BB_FLAGS;
+
+typedef struct tagBASIC_BLOCK
+{
+	CTRL_FLOW	Flow;
+	DWORD		Size;
+	DWORD		Address;
+	DWORD		EdgesIn;
+	int			StackAdjustment;
+	/* BB_FLAGS */ DWORD	Flags;
+} BASIC_BLOCK;
+
+typedef struct tagPROCEDURE
+{
+	DWORD	Address;
+	DWORD	Size;
+	DWORD	NumberOfBasicBlocks;
+	[size_is(NumberOfBasicBlocks)]
+	DWORD	*BasicBlocks;
+} PROCEDURE;
+
+[uuid(2597F640-D489-11d1-AEA4-0000C0866B0E)]
+interface IDisEnumBASIC_BLOCK : IUnknown
+{
+	HRESULT Next(ULONG celt, BASIC_BLOCK* rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IDisEnumBASIC_BLOCK** ppEnum);
+}
+
+[uuid(289EB7C0-F4EE-11d1-AECA-0000C0866B0E)]
+interface IDisEnumPROCEDURE : IUnknown
+{
+	HRESULT Next(ULONG celt, PROCEDURE* rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IDisEnumPROCEDURE** ppEnum);
+}
+
+//{DD6DD9F0-D0A8-11d1-AEA0-9ABAAD000000}
+[uuid(DD6DD9F0-D0A8-11d1-AEA0-9ABAAD000000)]
+interface IDisCfg : IUnknown
+{
+	HRESULT Attach( [in] IDisLdr *pILdr,
+					[in] IDisDis *pIDis,
+					[in] IDisSymMgr *pISym);
+
+	HRESULT GetEdgesIn(	[in] DWORD Address,
+						[out, size_is(*count)] DIS_REF *Refs,
+						[in, out] int *count );
+
+	HRESULT Parse( [in] DWORD Address );
+	HRESULT ParseAllSymbols();
+
+	HRESULT Clear();
+
+	HRESULT EnumBasicBlocks( [out] IDisEnumBASIC_BLOCK **ppEnum );
+	HRESULT EnumProcedures( [out] IDisEnumPROCEDURE **ppEnum );
+	HRESULT GetNextBasicBlock( [in] DWORD Address, [out] BASIC_BLOCK *BasicBlock );
+
+	HRESULT ParseProcedure( [in] DWORD Address, [out] PROCEDURE *Procedure );
+
+	HRESULT GetDataReferences( [in] DWORD Address, [out] IEnumInstructions **ppEnum );
+}

@@ -1,0 +1,22 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+	uuid(9859BB80-CAB2-11D1-AE9A-B2D326000000),
+	version(1.0),
+	helpstring("SymMgr 1.0 Type Library")
+]
+library SYMMGRLib
+{
+	importlib("stdole32.tlb");
+	importlib("stdole2.tlb");
+
+	[
+		uuid(9859BB83-CAB2-11D1-AE9A-B2D326000000),
+		helpstring("CSymMgr Class")
+	]
+	coclass CSymMgr
+	{
+		[default] interface IDisSymMgr;
+	};
+};

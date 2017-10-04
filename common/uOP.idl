@@ -1,0 +1,52 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+cpp_quote("#define NAMELESS_UNION")
+
+
+typedef struct tagREGISTER_VARIABLE
+{
+	REGISTER		Register;
+	BYTE			Mask;		// bit mask specifying bytes of Register used
+} REGISTER_VARIABLE;
+
+typedef struct tagSTACK_VARIABLE
+{
+	WORD	Delta;
+} STACK_VARIABLE;
+
+typedef struct tagGLOBAL_VARIABLE
+{
+	ADDRESS	Address;
+} GLOBAL_VARIABLE;
+
+typedef struct tagOPERAND
+{
+	union	{
+		REGISTER_OPERAND	Register;
+		STACK_OPERAND		Stack;
+		GLOBAL_OPERAND		Global;
+		UNKNOWN_OPERAND		Unknown;	// i.e., [EBX+ESI+8]
+	}
+} OPERAND;
+
+typedef struct tagADDRESS
+{
+	union {
+	DWORD	dwAddr;	// only 32-bit for now
+	} NAMELESS_UNION;
+} ADDRESS;
+
+typedef BYTE	Bank;
+typedef BYTE	REGNUM;
+typedef struct tagREGISTER
+{
+	REGBANK	Bank;
+	REGNUM	Num;
+} REGISTER;
+
+typedef struct tagREG_VARIABLE
+{
+	REGISTER		Reg;
+	SIZE_ATTRIBUTE	Size;
+}

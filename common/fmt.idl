@@ -1,0 +1,12 @@
+import "oaidl.idl";
+import "ocidl.idl";
+import "dis.idl";
+import "sym.idl";
+
+//{460558A0-6496-11d1-AE3C-0000C0866B0E}
+[ uuid(460558A0-6496-11d1-AE3C-0000C0866B0E) ]
+interface IDisFmt : IUnknown
+{
+	HRESULT GetInstructionString( [in] PINSTRUCTION pInst, [out] BSTR *pbStr );
+	HRESULT SetSymbolManager( [in] IDisSymMgr *pISym);
+}

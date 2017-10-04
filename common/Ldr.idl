@@ -1,0 +1,107 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+interface IDisLdr;
+interface IDisImg;
+
+//{2D05BF30-E8FB-11d1-AEC0-34C26F000000}
+[uuid(2D05BF30-E8FB-11d1-AEC0-34C26F000000)]
+interface IEnumImages : IUnknown
+{
+	HRESULT Next(ULONG celt, IDisImg ** rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IEnumImages** ppEnum);
+}
+
+//{8D5E0E60-BA37-11d1-AE8C-0000C0866B0E}
+[uuid(8D5E0E60-BA37-11d1-AE8C-0000C0866B0E)]
+interface IDisLdr : IUnknown
+{
+	HRESULT Load([in] BSTR bstrFile, [out] IDisImg **ppImage );
+	HRESULT EnumImages(IEnumImages **ppEnum);
+	HRESULT ConvertVirtualAddressToPtr([in] DWORD VirtualAddress, [out] DWORD * Pointer);
+}
+
+typedef struct tagIMG_IMPORT
+{
+	BSTR Module;
+	BSTR Name;
+	int	 Ordinal;
+	DWORD Address;	// address of patch
+} IMG_IMPORT;
+
+typedef struct tagIMG_EXPORT
+{
+	BSTR Name;
+	DWORD Address;
+} IMG_EXPORT;
+
+[uuid(2DB7E190-D35E-11d1-AEA2-7C650A000000)]
+interface IDisEnumImports : IUnknown
+{
+	HRESULT Next(ULONG celt, IMG_IMPORT* rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IDisEnumImports** ppEnum);
+}
+
+[uuid(2DB7E191-D35E-11d1-AEA2-7C650A000000)]
+interface IDisEnumExports : IUnknown
+{
+	HRESULT Next(ULONG celt, IMG_EXPORT* rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IDisEnumExports** ppEnum);
+}
+
+typedef enum tagIMG_SECTION_TYPE
+{
+	IMG_SECTION_CODE,
+	IMG_SECTION_DATA
+} IMG_SECTION_TYPE;
+
+typedef struct tagIMG_SECTION
+{
+	DWORD	Address;
+	DWORD	Size;
+	IMG_SECTION_TYPE	Type;
+} IMG_SECTION;
+
+//{413A1770-E851-11d1-AEBF-3A43C2000000}
+[uuid(413A1770-E851-11d1-AEBF-3A43C2000000)]
+interface IEnumSections : IUnknown
+{
+	HRESULT Next(ULONG celt, IMG_SECTION* rgelt, ULONG* pceltFetched);
+	HRESULT Skip(ULONG celt);
+	HRESULT Reset(void);
+	HRESULT Clone(IEnumSections** ppEnum);
+}
+
+//{F4EDD6B0-BC4D-11d1-AE8F-B8BB59000000}
+[uuid(F4EDD6B0-BC4D-11d1-AE8F-B8BB59000000)]
+interface IDisImg : IUnknown
+{
+	HRESULT Load([in] BSTR bstrFile);
+
+	HRESULT GetImagePath([out] BSTR *pbsPath);
+
+	HRESULT ConvertRVAToPtr([in] DWORD dwRVA, [out] DWORD * pdwPtr );
+	HRESULT ConvertVAToPtr([in] DWORD dwVA, [out] DWORD * pdwPtr );
+	HRESULT ConvertPtrToVA([in] DWORD dwPtr, [out] DWORD * pdwVA );
+
+	HRESULT GetEntryPointPtr([out] DWORD * pdwPtr);
+	HRESULT GetPreferredLoadAddress([out] DWORD * pdwVA);
+
+	HRESULT EnumImports(IDisEnumImports **ppEnum);
+	HRESULT EnumExports(IDisEnumExports **ppEnum);
+
+	HRESULT EnumSections(IEnumSections **ppEnum);
+}
+
+//{C44BCC20-BAF2-11d1-AE8E-8A7F3D000000}
+//[uuid(C44BCC20-BAF2-11d1-AE8E-8A7F3D000000)]
+//interface IDisEnumSymbols : IUnknown
+//{
+//	HRESULT Poop;
+//}
